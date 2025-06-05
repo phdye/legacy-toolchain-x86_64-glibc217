@@ -1,129 +1,123 @@
-# 🛠️ Legacy Cross Toolchain: GCC 5.x + glibc 2.17 for x86_64
+# 🛠️ Legacy Toolchain: GCC 5.x + glibc 2.17 for x86_64-pc-linux-gnu (Runtime-Enabled)
 
-This repository provides a prebuilt **Crosstool-NG**-based cross-compilation toolchain targeting **x86_64 with glibc 2.17** and **GCC 5.x**. It is intended for developers needing to build legacy-compatible binaries (e.g. for older Linux distros, containerized environments, or specific legacy APIs).
+This repository provides a cross-build toolchain for targeting **glibc 2.17** on **x86_64** using **GCC 5.x**. It is designed for building and *running* binaries on modern systems **with full runtime support via sysroot redirection**.
 
 ---
 
-## 📦 Binary Release
+## 📦 Binary Download
 
-👉 [Download the latest toolchain release](https://github.com/YOUR_USERNAME/legacy-toolchain-x86_64-glibc217/releases/latest)
+➡️ [Download toolchain tarball](https://github.com/YOUR_USERNAME/legacy-toolchain-x86_64-glibc217/releases/latest)
 
 Contents:
-- GCC 5.x (cross-compiler)
-- glibc 2.17
-- Binutils, libstdc++, headers, and sysroot
+- GCC 5.x cross toolchain
+- glibc 2.17 runtime and development headers
+- libstdc++, libgcc, and sysroot layout
+- Example wrapper script for runtime execution
 
 ---
 
-## ✅ Target System
+## ✅ Use Case
 
-| Property         | Value                            |
-|------------------|----------------------------------|
-| Architecture      | x86_64                          |
-| ABI               | LP64                            |
-| libc              | glibc 2.17                      |
-| Compiler          | GCC 5.x                         |
-| Binutils          | Matching 2.26 or newer          |
-| Compatible With   | Ubuntu 14.04–16.04, CentOS 7,   |
-|                   | RHEL 7, legacy container images |
+Build and run legacy-compatible binaries **on the same host**, using glibc 2.17 and older ABI rules — without touching or downgrading the host system’s glibc.
+
+---
+
+## 🧱 Toolchain Specs
+
+| Item               | Value                        |
+|--------------------|------------------------------|
+| Architecture       | `x86_64`                     |
+| Compiler           | `GCC 5.x`                    |
+| C library          | `glibc 2.17`                 |
+| Sysroot layout     | Fully relocatable            |
+| Host Compatibility | Ubuntu ≥ 20.04, WSL2, etc.   |
 
 ---
 
 ## 🚀 Quickstart
 
-### 1. Extract
+### 1. Extract the toolchain
 
 ```bash
-tar -xvf x86_64-glibc217-toolchain.tar.xz -C $HOME/x-tools/
+mkdir -p $HOME/x-tools
+tar -xJf x86_64-pc-linux-gnu-toolchain.tar.xz -C $HOME/x-tools/
+export TOOLCHAIN_ROOT=$HOME/x-tools/x86_64-pc-linux-gnu
 ````
 
-### 2. Setup Environment
+### 2. Build a program
 
 ```bash
-export TOOLCHAIN_ROOT=$HOME/x-tools/x86_64-pc-linux-gnu
 export PATH="$TOOLCHAIN_ROOT/bin:$PATH"
-export CC="x86_64-pc-linux-gnu-gcc"
-export CXX="x86_64-pc-linux-gnu-g++"
-```
-
-### 3. Compile a C/C++ Program
-
-```bash
-$CC -static-libgcc -static-libstdc++ -O2 -o hello hello.c
-```
-
-Or configure an autotools/cmake-based project with:
-
-```bash
-./configure --host=x86_64-pc-linux-gnu --prefix=/opt/myapp
+x86_64-pc-linux-gnu-gcc -O2 -static-libgcc -static-libstdc++ -o hello hello.c
 ```
 
 ---
 
-## 🔧 Build Provenance
+## 🧪 Run the program (glibc 2.17 runtime)
 
-This toolchain was built using:
+To run binaries using glibc 2.17 instead of your host glibc:
 
-* **[Crosstool-NG](https://github.com/crosstool-ng/crosstool-ng)**
-* Host system: Ubuntu 20.04 (x86\_64)
-* Configuration file: [.config](./.config)
+### Method 1: With LD\_LIBRARY\_PATH
 
-The configuration uses:
+```bash
+export GLIBC217_LIB="$TOOLCHAIN_ROOT/x86_64-pc-linux-gnu/lib"
+LD_LIBRARY_PATH="$GLIBC217_LIB:$LD_LIBRARY_PATH" ./hello
+```
 
+### Method 2: Patchelf rpath override
+
+```bash
+patchelf --set-interpreter "$GLIBC217_LIB/ld-2.17.so" --set-rpath "$GLIBC217_LIB" ./hello
+./hello
+```
+
+---
+
+## 🧰 Wrapper script (recommended)
+
+Create a `run-with-sysroot.sh`:
+
+```bash
+#!/bin/bash
+TOOLCHAIN="$HOME/x-tools/x86_64-pc-linux-gnu"
+export LD_LIBRARY_PATH="$TOOLCHAIN/x86_64-pc-linux-gnu/lib:$LD_LIBRARY_PATH"
+exec "$@"
+```
+
+Usage:
+
+```bash
+chmod +x run-with-sysroot.sh
+./run-with-sysroot.sh ./hello
+```
+
+---
+
+## 🔧 Cross Configuration
+
+This toolchain was built with **Crosstool-NG** using the config: [.config](./.config)
+
+Key settings:
+
+* `GCC version`: 5.5.0
 * `glibc version`: 2.17
-* `gcc version`: 5.x
-* `binutils`: compatible
-* Optimized for `x86_64` (no `-mcpu` tuning for broad compatibility)
-
----
-
-## 📁 Directory Structure
-
-```text
-x86_64-pc-linux-gnu/
-├── bin/                  # Compiler and toolchain binaries
-├── lib/                  # glibc runtime and development libs
-├── include/              # glibc headers
-├── sysroot/              # Target root filesystem
-└── share/
-```
-
----
-
-## 🧪 Testing
-
-After setup:
-
-```bash
-x86_64-pc-linux-gnu-gcc -v
-x86_64-pc-linux-gnu-gcc -static-libgcc -static-libstdc++ -o test test.c
-file test
-ldd ./test  # should show glibc 2.17 or no dynamic deps if statically linked
-```
-
----
-
-## 🧰 Notes
-
-* Do **not** use `LD_LIBRARY_PATH` to inject glibc 2.17 into host programs.
-* This toolchain is for *building* legacy-targeted binaries, not running them on newer systems.
+* `Binutils`: 2.26
+* `Enable C++ support`: yes
+* `Enable threads`: yes
+* `Sysroot`: enabled and isolated
 
 ---
 
 ## 📜 License
 
-This repository contains only configuration files and build metadata.
-Toolchain binaries include components under:
+Toolchain components are covered by:
 
-* GPLv2 (gcc, binutils)
-* LGPL (glibc)
-* Other compatible FLOSS licenses
-
-Consult upstream toolchain sources for license details.
+* GPLv2+/LGPL for GCC, glibc
+* FLOSS-compatible licenses
 
 ---
 
-## 📬 Feedback & Contributions
+## 📬 Feedback
 
-Pull requests and issues welcome!
-This repo is intended for reproducible, portable toolchain builds for legacy systems.
+Issues and pull requests welcome!
+If you build variants (e.g. musl, static-only, ARM targets), feel free to contribute configs.
